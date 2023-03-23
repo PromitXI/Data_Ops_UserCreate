@@ -1,0 +1,42 @@
+trigger:
+- main
+
+pool:
+  vmImage: 'windows-latest'
+
+steps:
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: |
+      $SqlServerName = "promitx-qa.database.windows.net"
+      $DatabaseName = "Sql-QA-DataOps-EUS"
+      $AdminUsername = "promitqa"
+      $AdminPassword = "FlipFlop@123"
+      $CsvFilePath = "$(System.DefaultWorkingDirectory)/users.csv"
+
+      $SqlConnection = New-Object System.Data.SqlClient.SqlConnection
+      $SqlConnection.ConnectionString = "Server = $SqlServerName; Database = $DatabaseName; Integrated Security = False; User ID = $AdminUsername; Password = $AdminPassword;"
+      $SqlConnection.Open()
+
+      $CsvData = Import-Csv -Path $CsvFilePath
+
+      foreach ($User in $CsvData) {
+          $UserName = $User.UserName
+          $Password = $User.Password
+
+          # Check if user already exists
+          $SqlCommand = $SqlConnection.CreateCommand()
+          $SqlCommand.CommandText = "SELECT COUNT(*) FROM sys.sysusers WHERE name = '$UserName'"
+          $UserExists = $SqlCommand.ExecuteScalar()
+          if ($UserExists -eq 1) {
+              Write-Host "User $UserName already exists"
+          } else {
+              $SqlCommand.CommandText = "CREATE USER [$UserName] WITH PASSWORD = '$Password';"
+              $SqlCommand.ExecuteNonQuery()
+              Write-Host "User $UserName created"
+          }
+      }
+
+      $SqlConnection.Close()
+  displayName: 'Create database users'
